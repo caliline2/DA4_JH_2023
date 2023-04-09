@@ -1,0 +1,442 @@
+---
+title: "DA4 Assignment 2"
+author: "Jana Hochel"
+date: "2023-10-04"
+output:
+  pdf_document:
+    latex_engine: xelatex
+---
+
+# CO2 and GDP
+### To what extent does economic activity cause CO 2 emission?
+
+Carbon dioxide (CO2) emissions are a critical factor in understanding the human impact on climate change. CO2 is the most abundant greenhouse gas trapping heat in the atmosphere and contributing to global warming. CO2 is primarily produced by human activity, such as the burning of fossil fuels for energy, transportation, and industrial processes. Global CO2 emissions have been increasing rapidly since 1970, exacerbating the impacts of climate change, such as rising sea levels and more frequent and severe heat waves. To mitigate the worst effects of climate change, it is essential to reduce global CO2 emissions through strategies such as transitioning to renewable energy sources and improving energy efficiency.
+
+To make this happen, the world must first understand what are the determinants of CO2 emissions. Earlier studies suggests that developed coutries emit majority of the CO2 emissions (Dietz and Rosa, 1997). Later studies suggest it is more complex and focus on the reverse effect, such as the impact of CO2 emissions and policies on GDP (Llanos et al., 2022). This study reviews the causal link between GDP per capita from 266 countries and the CO2 emissions per capita.
+
+Dietz, T., & Rosa, E. A. (1997). Effects of population and affluence on CO2 emissions. Proceedings of the National Academy of Sciences, 94(1), 175-179.
+
+Llanos, C., Kristjanpoller, W., Michell, K., & Minutolo, M. C. (2022). Causal treatment effects in time series: CO2 emissions and energy consumption effect on GDP. Energy, 249, 123625.
+
+## Download data and describe it (1p)
+
+The data used in the model are from World Bank repository for 266 countries from 1992 till 2021. Apart from GDP and CO2 per capita, I have added an urbanisation rate (% of population), access to electricity (% of population), and available fresh water per capita as providing potable water may be energy-consuming.
+
+
+```{r echo=FALSE, include=FALSE}
+
+# Load Libraries
+## Clear memory
+rm(list=ls())
+
+## Packages to use
+library(tidyverse)
+library(modelsummary)
+library(knitr)
+library(ggplot2)
+library(skimr)
+library(dplyr)
+library(plm)
+library(lfe)
+library(lubridate)
+library(lspline)
+library(fixest)
+require(scales)
+library(lmtest)
+library(olsrr)
+library("corrplot")
+library(kableExtra)
+library(stargazer)
+library(readr)
+library(lme4)
+library(emmeans)
+library(effects)
+library(knitr)
+
+
+# Call the data from github
+
+data_url <- "https://raw.githubusercontent.com/caliline2/DA4_JH_2023/main/WBCO2.csv"
+data1 <- read.csv(data_url)
+
+
+# Subset data for the year GDP
+gdp_pc <- subset(data1, Metric == "GDP per capita, PPP (current international $)")
+
+CO2_pc <- subset(data1, Metric == "CO2 emissions (metric tons per capita)")
+
+Urbanisation <- subset(data1, Metric == "Urban population (% of total population)")
+
+Electricity <- subset(data1, Metric == "Access to electricity (% of population)")
+
+Water <- subset(data1, Metric == "Renewable internal freshwater resources per capita (cubic meters)")
+
+# Rename the column to "new_name"
+names(gdp_pc)[names(gdp_pc) == "Value"] <- "GDP"
+gdp_pc$Metric <- NULL
+
+names(CO2_pc)[names(CO2_pc) == "Value"] <- "CO2"
+CO2_pc$Metric <- NULL
+
+names(Urbanisation)[names(Urbanisation) == "Value"] <- "Urbanisation"
+Urbanisation$Metric <- NULL
+
+names(Electricity)[names(Electricity) == "Value"] <- "Electricity"
+Electricity$Metric <- NULL
+
+names(Water)[names(Water) == "Value"] <- "Water"
+Water$Metric <- NULL
+
+
+
+# Rename the column to "new_name"
+
+data2 <- merge(gdp_pc, CO2_pc, by = c("Country", "Time"))
+data2 <- merge(data2, Electricity, by = c("Country", "Time"))
+data2 <- merge(data2, Water, by = c("Country", "Time"))
+data2 <- merge(data2, Urbanisation, by = c("Country", "Time"))
+
+# Download data and describe it (1p)
+# Group by 'group' column and apply skim to each group
+#data2 %>%
+#  group_by(Country) %>%
+#  do(skim(.))
+```
+
+```{r echo=FALSE, include=TRUE, comment=NA, message=FALSE, warning=FALSE}
+  
+# Group by 'group' column and apply skim to each group, then filter to show only missing values
+#data2 %>%
+#  group_by(Country) %>%
+#  do(skim(.)) %>%
+#  filter(n_missing > 5) %>%
+#  arrange(desc(n_missing)) %>%
+#  print(n=Inf)
+```
+
+
+## Data Quality
+
+Here we display only countries with missing data. Some countries have missing values. Usually these are small, developing nations, city states, and islands. Thus, I have decided to drop everything with more than 10 missing observations (years). This way, we retain Venezuela and Afghanistan (n_missing = 10 years). This is mostly true for very early data (1992-2000) but also the most recent (2021).
+
+
+```{r echo=FALSE, include=FALSE, comment=NA, message=FALSE, warning=FALSE}
+  
+
+
+
+#data2 %>%
+#  group_by(Country) %>%
+#  do(skim(.)) %>%
+#  filter(n_missing > 2) %>%
+#  arrange(desc(n_missing)) %>%
+#  ungroup() %>%  # ungroup to prevent issues with printing
+#  print(n=Inf)
+  
+  
+missing_count <- data2 %>%
+  group_by(Country) %>%
+  summarise_all(~sum(is.na(.)))
+
+# Filter out countries with more than 10 missing observations
+# Filter out countries with more than 10 missing values in any column
+data2_filtered <- data2 %>%
+  group_by(Country) %>%
+  summarize(total_na = sum(is.na(GDP)) + sum(is.na(CO2))+sum(is.na(Urbanisation))) %>%
+  filter(total_na <= 10) %>%
+  select(Country) %>%
+  semi_join(data2, by = "Country")
+
+data2_subset <- data2 %>%
+  filter(Country %in% unique(data2_filtered$Country))
+
+count <- data2_subset  %>%
+  distinct(Country) %>%
+  summarize(count = n())
+
+```
+
+
+```{r echo=FALSE, include=TRUE, comment=NA, message=FALSE, warning=FALSE}
+  
+
+kableExtra::kable(count, caption = "Final number of countries")
+
+#kableExtra::kable(sapply(data2, class))
+
+subset_data <- data2[, c("GDP", "CO2")]
+kableExtra::kable(summary(subset_data), caption = "Key Variables")
+
+```
+
+
+```{r include=FALSE, echo=FALSE}
+model <- lm(data2$CO2~GDP + Water + Electricity + Urbanisation, data = data2)
+
+#```{r include=TRUE}
+options(digits=2)
+options(scipen=999, digits=3)
+```
+
+```{r include=TRUE, echo=FALSE}
+kableExtra::kable(ols_vif_tol(model), caption= "Multicollinearity")
+```
+There is a moderate level of multicollinearity between the GDP and Electricity variables. However, the Water and Urbanisation variables seem to have low levels of multicollinearity with the other variables.
+
+```{r echo=FALSE, include=FALSE, comment=NA, message=FALSE, warning=FALSE}
+  
+# Drop rows with NA values
+#data2 <- data2[complete.cases(data2), ]
+data2 <- data2 %>% 
+  group_by(Country) %>% 
+  mutate(logGDP = log(GDP),
+         logCO2 = log(CO2))
+         
+data2
+
+
+# Plot GDP over time
+```
+
+## Time Trends and missing values
+
+Till 2000 there were mostly data from developed countries. This would explain why the access to electricity dramatically decreased as well ass the gdp between 1992 and 2000.
+
+```{r echo=FALSE, include=TRUE, comment=NA, message=FALSE, warning=FALSE}
+  
+ggplot(data2, aes(x = Time, y = GDP)) +
+  stat_summary(fun = mean, geom = "line") +
+  labs(x = "Year", y = "Mean GDP per capita") +
+  ggtitle("Mean GDP over Time")
+  
+ggplot(data2, aes(x = Time, y = CO2)) +
+  stat_summary(fun = mean, geom = "line") +
+  labs(x = "Year", y = "Mean CO2 per capita") +
+  ggtitle("Mean GDP over Time")
+  
+  
+ggplot(data2, aes(x = Time, y = Electricity)) +
+  stat_summary(fun = mean, geom = "line") +
+  labs(x = "Year", y = "Mean access to electricity %") +
+  ggtitle("Mean GDP over Time")
+```
+
+
+# The models
+  
+
+## 1. Cross section OLS for the year 2005
+
+The explanatory power - the ability to capture variance is strong R^2 > 0.90.
+F statistic is low which means the results are statistically significant.
+
+### Reg Equation
+
+$logCO2 = -8.5878 + 0.8952*logGDP + 0.0169*Electricity + 0.0001*Urbanisation - 0.0000005*Water$
+
+### Interpreting Coefficients
+
+In log-log models, the coefficients represent elasticities - percentage change of dependent variable and subsequent 1% change in the independent variable.
+
+Only, logGDP and Access to Electricity (%) seem to display a statistically significant pattern. This coefficient is positive. It means that a 1% increase in GDP is associated with a 0.8952% increase in CO2 emissions when holding other variables constant. The increase for Electricity is lower.
+
+Urbanisation is not only insignificant but also very small, so technically, it could be dropped.
+```{r echo=FALSE, include=TRUE, comment=NA, message=FALSE, warning=FALSE}
+# Filter data for year 2005
+#data_2005 <- subset(data1, Time == 2005)
+model_2005 <- lm(logCO2 ~ logGDP + Electricity + Urbanisation + Water, data = subset(data2, Time == 2005))
+summary(model_2005)
+
+```
+
+
+
+
+# 2. Cross section OLS for a year of your choice 
+
+I have selected 2019 as the most recent year with good data coverage.
+
+The explanatory power is lower but the ability to capture variance remains strong R^2 > 0.87.
+F statistic is low which means the results are statistically significant.
+
+### Reg Equation
+
+$logCO2 = -8.8897 + 0.9000*logGDP + 0.0135*Electricity + 0.0005*Urbanisation - 0.0000011*Water$
+
+### Interpreting Coefficients
+
+Water and Urbanisation still remain insignificant. The coefficients for electricity and logGDP remain almost the same. Thus, for the interpretation please refer to the exercise #1.
+
+```{r echo=FALSE, include=TRUE, comment=NA, message=FALSE, warning=FALSE}
+
+model_2019 <- lm(logCO2 ~ logGDP+Electricity+Urbanisation+Water, data = subset(data2, Time == 2019))
+summary(model_2019)
+```
+
+
+
+# 3. First difference model, with time trend, no lags
+
+I used different methods for time trends. 
+
+he results are almost identical for Basic FD and Time Trend Sequence OLS, for 1% increase in GDP, there is a 1.16% increase in CO2 emissions with the a robust R^2>0.79.The results suggest that GDP is more important determinant than time. Time trend is insignificant due to various ups and downs cause by diversity of countries and macroeconomics fundamentals over the past 30 years and the growth is not linear over time.
+
+This is where assigning Time as a factor was more helpful as some later years there was a statistically significant negative coefficient which may be a sign that the climate change awareness and sustainability is coming to a fore. Significant coefficient was also for 2008 when during an economic crisis carbon-heavy factories and firms might have slowed down their operations. Nonetheless, it may be also a noise as this is only 1* significance. R-square is even more robust and F-score is low for all models pointing to statistical significance (mostly the statistically significant effect of GDP on CO2 emissions).
+
+# Basic FD
+```{r echo=FALSE, include=TRUE, comment=NA, message=FALSE, warning=FALSE}
+
+# * basic FD 
+
+# * basic FD 
+fd_lm <- feols(logCO2 ~ logGDP,
+               data = data2, 
+               cluster = "Country")
+
+summary(fd_lm)
+
+```
+
+# Time as a trend sequence (year)
+```{r echo=FALSE, include=TRUE, comment=NA, message=FALSE, warning=FALSE}
+
+data2$trend <- seq_along(data2$Time)
+
+fd_lm <- feols(logCO2 ~ logGDP + trend,
+               data = data2, 
+               cluster = "Country")
+
+summary(fd_lm)
+
+
+
+
+
+
+```
+
+# Time as a factor
+```{r echo=FALSE, include=TRUE, comment=NA, message=FALSE, warning=FALSE}
+
+fd_lm <- feols(logCO2 ~ logGDP + factor(Time)| Country,
+               data = data2, 
+               cluster = "Country")
+
+summary(fd_lm)
+
+
+
+
+
+
+```
+
+
+
+# 4. First difference model, with time trend, 2 year lags
+
+In this case, the R^2 > 0.08 which indicates it explains only a small percentage of variation. It may not be a good model and 2 year lags may not explain the workings of CO2 emissions as they are emitted immediatelly after burning or producing a product.
+F statistic is low which means the results are statistically significant but it still remains a poor model.
+
+### Reg Equation
+
+$logCO2_it - logCO2_i(t-1) = -0.01023 + 0.37580*logGDP_it - 0.20383*logCO2_i(t-1) - 0.04569*logCO2_i(t-2) + 0.17742*logGDP_i(t-1) + 0.06600*logGDP_i(t-2) + \epsilon_it$
+
+### Interpreting Coefficients
+I have used a first-difference model with one-way (individual) effects. In other words, logCO2 and logGDP, and lags of both variables.
+
+A 1% increase in GDP there is 0.3758% increase in CO2 emissions. There remains some residual effect. According to the coefficients, if there were high emissions this year people are less likely to pollute the next year. The opposite goes for GDP as if people were richer they are more likely to emit CO2 the next two years. The coefficient 0.17742 means that a one percent increase in the lagged GDP variable is associated with a 0.17742 percent increase in the current CO2 variable.
+
+Nonetheless, as mentioned earlier, the model has a low R-squared value, indicating that it explains only a small portion of the variability  and may not be a good fit.
+
+```{r echo=FALSE, include=TRUE, comment=NA, message=FALSE, warning=FALSE}
+
+
+
+
+# Convert the data to a panel data format
+pdata <- pdata.frame(data2, index=c("Country", "Time"))
+
+# remove rows with missing or infinite values
+pdata <- pdata[complete.cases(pdata), ]
+pdata <- na.omit(pdata)
+# * FD, 5 lags
+
+# Create a time trend variable
+#pdata$trend <- 1:nrow(pdata)
+
+
+
+# extract the year from the date variable
+#pdata$year <- year(pdata$Time)
+
+# create a time trend variable based on the sequence of years
+pdata$trend <- seq_along(pdata$Time)
+
+# Estimate the first difference model
+fd_model <- plm(logCO2 ~ logGDP + trend + lag(logCO2, 1:2) + lag(logGDP, 1:2), data=pdata, index=c("Country", "Time"), model="fd")
+
+# View the summary of the model
+summary(fd_model)
+
+```
+# 5. First difference model, with time trend, 6 year lags
+
+
+In this case, the R^2 > 0.10 which indicates it explains only a small percentage of variation. It may not be a good model and 6 year lags explain only a little better the variation in CO2 emisssions.
+F statistic is low which means the results are statistically significant but it still remains a poor model.
+
+### Reg Equation
+
+$logCO2(i,t) - logCO2(i,t-1) = αi + β(logGDP(i,t) - logGDP(i,t-1)) + Σδj * lag(logCO2(i,t), j) + Σγk * lag(logGDP(i,t), k) + \epsilon_it$
+
+### Interpreting Coefficients
+This model suggest that the trend is significant only the first few years. CO2 emissions may cause lower CO2 emissions next year because people already consumed the emissions and do not need to do it anymore. Log GDP has a positive effect the following year on the CO2 emissions.
+
+```{r echo=FALSE, include=TRUE, comment=NA, message=FALSE, warning=FALSE}
+
+
+# Estimate the first difference model
+fd_model6 <- plm(logCO2 ~ logGDP + trend + lag(logCO2, 1:6) + lag(logGDP, 1:6), data=pdata, index=c("Country", "Time"), model="fd")
+
+# View the summary of the model
+summary(fd_model6)
+
+
+```
+# 6. Fixed effects model with time and country fixed effects
+
+The R^2 is tiny which indicates it does not explain much variation. This may be due to overfitting.
+F statistic is low - still statistically significant.
+
+### Reg Equation
+
+$CO2_it - mean(CO2_i) = -0.00001011 * (GDP_it - mean(GDP_i)) + u_it$
+
+### Interpreting Coefficients
+When controlling for so many variables we may see the effect of GDP is signifciantly negative. This can mean that in fact GDP does not have such an large effect but rather other underlying factors that are country-specific. 
+
+The coefficient estimate for GDP is -0.00001011, which means that a 1% increase in GDP is associated with a 0.001011% decrease in carbon dioxide emissions. The standard error for the coefficient estimate is 0.00000218, and the t-value is -4.64, indicating that the coefficient is statistically significant at the 1% level. The R-squared value is 0.00411, indicating that GDP explains only a small portion of the variation in carbon dioxide emissions.
+
+
+```{r echo=FALSE, include=TRUE, comment=NA, message=FALSE, warning=FALSE}
+
+
+# Run fixed effects model with time and country fixed effects
+model <- plm(CO2 ~ GDP, data=pdata, index=c("Country", "Time"), model="within")
+
+# View results
+summary(model)
+#fixef(model)
+
+
+############
+```
+# To what extent does economic activity cause CO 2 emission?
+
+In the first few models, GDP seems to play an important role in CO2 emissions. These models suggest a high robustness but perhaps GDP is only a proxy for some other udnerlying variables or there is a parallel trend.
+This may include production, consumption, industry-mix incl. heavy manufacturing and energy mix. Another cofounders may include the size of population and the economies of scale altough this was partically captured by urbanisation earlier in the models.
+
+Thus, the workings of the CO2 emissions may be more complicated but in general we can agree that richer countries per capita generate more CO2. There may be a causal link but perhaps due to other variables not included in model that are correlated with GDP per capita.
+
+The mechanism could be that net-exporters are more likely to be rich in terms of GDP per capita but also product more CO2 emissions.
