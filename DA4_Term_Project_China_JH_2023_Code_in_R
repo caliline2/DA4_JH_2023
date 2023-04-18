@@ -131,11 +131,11 @@ model_fe <- plm(Exports ~ Tariffs + treatment + Year, data = panel_data, effect 
 summary(model_fe)
 
 # Key variables provided by Chinese Bureau for statistics
-model_fe2 <- plm(Exports ~ Tariffs + Imports + fdi + treatment + Year, data = panel_data, effect = "individual", model = "within", na.action = na.exclude)
-summary(model)
+model_fe2 <- plm(Exports ~ Tariffs + fdi + treatment + Year, data = panel_data, effect = "individual", model = "within", na.action = na.exclude)
+summary(model_fe2)
 
 # Enriched with World Bank confounders
-model_did <- plm(Exports ~ Tariffs + Imports + treatment + Year + fdi + electricity + ageing + business + gdp + savings + internet + inflation + gender + interest + unemployment + oil, data = panel_data, effect = "individual", model = "within", na.action = na.exclude)
+model_did <- plm(Exports ~ Tariffs + treatment + Year + fdi + electricity + ageing + business + gdp + savings + internet + inflation + gender + interest + unemployment + oil, data = panel_data, effect = "individual", model = "within", na.action = na.exclude)
 summary(model_did)
 
 # Diff-in-Diff Model
@@ -144,11 +144,14 @@ summary(model_did)
 model_did <- plm(Exports ~ Tariffs + treatment:Year, data = panel_data, effect = "individual", model = "within", na.action = na.exclude)
 summary(model_did)
 
-# Key variables provided by Chinese Bureau for statistics
-model_did <- plm(Exports ~ Tariffs + Imports + fdi + treatment:Year, data = panel_data, effect = "individual", model = "within", na.action = na.exclude)
-summary(model_did)
+# Key variables provided by Chinese Bureau for statistics 
+model_did2 <- plm(Exports ~ Tariffs + fdi + treatment:Year, data = panel_data, effect = "individual", model = "within", na.action = na.exclude)
+summary(model_did2)
 
 # Enriched with World Bank confounders
-model_did <- plm(Exports ~ Tariffs + Imports + fdi + electricity + ageing + business + gdp + savings + internet + inflation + gender + interest + unemployment + oil + treatment:Year, data = panel_data, effect = "individual", model = "within", na.action = na.exclude)
+
+model_did <- plm(Exports ~ Tariffs + fdi + electricity + ageing + business + gdp + savings + internet + inflation + gender + interest + unemployment + oil+ treatment:Year, data = panel_data, effect = "individual", model = "within", na.action = na.exclude)
 summary(model_did)
+
+
 
