@@ -123,6 +123,7 @@ summary(model)
 model <- plm(Exports ~ Tariffs + treatment+ Year+ fdi+electricity+ageing+business+gdp+savings+internet+inflation+gender+interest+unemployment+oil, data = panel_data, effect = "individual", model = "within", na.action = na.exclude)
 summary(model)
 
+######################### Absolute value of exports
 
 # Fixed Effects Model
 
@@ -151,6 +152,43 @@ summary(model_did2)
 # Enriched with World Bank confounders
 
 model_did <- plm(Exports ~ Tariffs + fdi + electricity + ageing + business + gdp + savings + internet + inflation + gender + interest + unemployment + oil+ treatment:Year, data = panel_data, effect = "individual", model = "within", na.action = na.exclude)
+summary(model_did)
+
+
+
+
+################ Logarithm
+
+
+
+# Fixed Effects Model
+
+# Tarrifs only
+model_fe <- plm(log(Exports) ~ Tariffs + treatment + Year, data = panel_data, effect = "individual", model = "within", na.action = na.exclude)
+summary(model_fe)
+
+
+# Key variables provided by Chinese Bureau for statistics
+model_fe2 <- plm(log(Exports) ~ Tariffs + fdi + treatment + Year, data = panel_data, effect = "individual", model = "within", na.action = na.exclude)
+summary(model_fe2)
+
+# Enriched with World Bank confounders
+model_did <- plm(log(Exports) ~ Tariffs + fdi+ treatment + Year + electricity + ageing + business + gdp + savings + internet + inflation + gender + interest + unemployment + oil, data = panel_data, effect = "individual", model = "within", na.action = na.exclude)
+summary(model_did)
+
+# Diff-in-Diff Model
+
+# Tarrifs only
+model_did <- plm(log(Exports) ~ Tariffs + treatment:Year, data = panel_data, effect = "individual", model = "within", na.action = na.exclude)
+summary(model_did)
+
+# Key variables provided by Chinese Bureau for statistics 
+model_did2 <- plm(log(Exports) ~ Tariffs + fdi + treatment:Year, data = panel_data, effect = "individual", model = "within", na.action = na.exclude)
+summary(model_did2)
+
+# Enriched with World Bank confounders
+
+model_did <- plm(log(Exports) ~ Tariffs + fdi + electricity + ageing + business + gdp + savings + internet + inflation + gender + interest + unemployment + oil+ treatment:Year, data = panel_data, effect = "individual", model = "within", na.action = na.exclude)
 summary(model_did)
 
 
