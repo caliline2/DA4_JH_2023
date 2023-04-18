@@ -1,0 +1,154 @@
+---
+title: "DA4_Tarrifs_China_Project"
+author: "Jana Hochel"
+date: "2023-04-18"
+output: html_document
+---
+
+##```{r echo=FALSE, include=FALSE}
+
+# Load Libraries
+## Clear memory
+rm(list=ls())
+
+## Packages to use
+library(tidyverse)
+library(dplyr)
+library(modelsummary)
+library(knitr)
+library(ggplot2)
+library(skimr)
+library(psych)
+library(dplyr)
+library(plm)
+library(lfe)
+library(lubridate)
+library(lspline)
+library(fixest)
+require(scales)
+library(lmtest)
+library(olsrr)
+library("corrplot")
+library(kableExtra)
+library(stargazer)
+library(readr)
+library(lme4)
+library(emmeans)
+library(effects)
+library(knitr)
+
+
+# Call the data from github
+
+data_url <- "https://raw.githubusercontent.com/caliline2/DA4_JH_2023/main/China_data_2022_JH.csv"
+data1 <- read.csv(data_url)
+
+
+ls(data1)
+
+
+# Rename the column "Total Value of Exports" to "Exports"
+# <- data1 %>% rename(Exports = `Total Value of Exports,`)
+#data1 <- data1 %>% rename(Imports = `Total Value of Imports,`)
+# Rename the column "Tariff rate, applied, weighted mean, all products (%)" to "Tariffs"
+#colnames(data1)[colnames(data4) == `Tariff rate, applied, weighted mean, all products (%)`] <- "Tariffs"
+
+
+
+# Pivot the data from wide to long format
+data2 <- data1 %>%
+  pivot_longer(cols = starts_with("X"), 
+               names_to = "Year", 
+               values_to = "Value") %>%
+  mutate(Year = as.integer(gsub("X", "", Year))) # Convert Year to integer
+  
+  data2
+  
+# Use spread() to create separate columns for each indicator
+data3 <- data2 %>%
+  spread(key = Indicators, value = Value)
+
+# Double checking the missing values total
+num_missing <- colSums(is.na(data3))
+num_missing
+
+# Double checking the missing values per country
+missing_count <- data6 %>%
+  group_by(Country) %>%
+  summarise_all(~sum(is.na(.)))
+  
+# Numeric variables only
+data5 = subset(data3, select = c(4,5,6,7,8,9,10,11,12,13,14,15,16,17))
+ls(data5)
+
+#Correlation Matrix
+corrplot(cor(data5), method = "number",addCoef.col = 1,number.cex = 0.75,  title = "Correlation Matrix")
+
+
+summary(data3)
+
+skim(data3)
+
+describe(data6)
+
+skimr::skim(data6)
+
+
+# Fixed Effect Model
+
+# Filter data for the two periods of interest
+# Filter data for the two periods of interest
+period1 <- 1997:2017
+period2 <- 2018:2021
+data_period1 <- filter(data3, Year %in% period1)
+data_period2 <- filter(data3, Year %in% period2)
+
+# Create a dummy variable to indicate treatment group (countries that experienced a change in tariffs)
+data_period1$treatment <- ifelse(data_period1$Country %in% unique(data_period1$Country[data_period1$Year == min(period2)]), 1, 0)
+data_period2$treatment <- ifelse(data_period2$Country %in% unique(data_period2$Country[data_period2$Year == max(period1)]), 1, 0)
+
+
+
+# Convert to panel data frame
+
+panel_data <- pdata.frame(rbind(data_period1, data_period2), index = c("Country", "Year")) 
+
+# Perform difference-in-differences analysis using fixed effects model
+model <- plm(Exports ~ Tariffs + treatment + Year, data = panel_data, effect = "individual", model = "within", na.action = na.exclude)
+summary(model)
+
+model <- plm(Exports ~ Tariffs + Imports + fdi + treatment + Year, data = panel_data, effect = "individual", model = "within", na.action = na.exclude)
+summary(model)
+
+model <- plm(Exports ~ Tariffs + treatment+ Year+ fdi+electricity+ageing+business+gdp+savings+internet+inflation+gender+interest+unemployment+oil, data = panel_data, effect = "individual", model = "within", na.action = na.exclude)
+summary(model)
+
+
+# Fixed Effects Model
+
+# Tarrifs only
+model_fe <- plm(Exports ~ Tariffs + treatment + Year, data = panel_data, effect = "individual", model = "within", na.action = na.exclude)
+summary(model_fe)
+
+# Key variables provided by Chinese Bureau for statistics
+model_fe2 <- plm(Exports ~ Tariffs + Imports + fdi + treatment + Year, data = panel_data, effect = "individual", model = "within", na.action = na.exclude)
+summary(model)
+
+# Enriched with World Bank confounders
+model_did <- plm(Exports ~ Tariffs + Imports + treatment + Year + fdi + electricity + ageing + business + gdp + savings + internet + inflation + gender + interest + unemployment + oil, data = panel_data, effect = "individual", model = "within", na.action = na.exclude)
+summary(model_did)
+
+# Diff-in-Diff Model
+
+# Tarrifs only
+model_did <- plm(Exports ~ Tariffs + treatment:Year, data = panel_data, effect = "individual", model = "within", na.action = na.exclude)
+summary(model_did)
+
+# Key variables provided by Chinese Bureau for statistics
+model_did <- plm(Exports ~ Tariffs + Imports + fdi + treatment:Year, data = panel_data, effect = "individual", model = "within", na.action = na.exclude)
+summary(model_did)
+
+# Enriched with World Bank confounders
+model_did <- plm(Exports ~ Tariffs + Imports + fdi + electricity + ageing + business + gdp + savings + internet + inflation + gender + interest + unemployment + oil + treatment:Year, data = panel_data, effect = "individual", model = "within", na.action = na.exclude)
+summary(model_did)
+
