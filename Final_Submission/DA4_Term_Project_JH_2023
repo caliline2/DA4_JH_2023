@@ -1,0 +1,426 @@
+---
+title: "DA4_Tarrifs_China_Project"
+author: "Jana Hochel"
+date: "2023-04-18"
+output:
+  pdf_document:
+    latex_engine: xelatex
+  word_document: default
+---
+
+# Trade war and Tariffs
+
+In 2018, Trump has initiated a trade war with China by implementing tariffs on certain Chinese products voicing concerns over trade imbalance and IP theft. China has mirrored some of these policies. According to the UN Conference on Trade and Development (UNCTAD), the US-China trade war has had negative economic impacts on both countries. the study suggests that U.S. tariffs on China caused a 25% loss of exports - a 35 billion dollar blow to Chinese exports in the U.S. market for tariffed goods in the first half of 2019. Sectors such as office machinery and communication equipment were the hardest hit, with a $15 billion reduction in US imports from China in those sectors, representing an average decline of 55% (UNCTAD, 2019).
+
+In 2023, the U.S.-China trade war still continues and has been suggested to have an impact on global trade by Peterson Insitute for International Economics. The phase one agreement between the Trump administration and China, implemented on February 14, 2020, established new U.S. tariffs on imports from China, with average tariffs remaining high at 19.3%. These tariffs cover 66.4% of U.S. imports from China, or approximately 335 billion dollar of trade. Moreover, Chinese retaliatory tariffs on U.S. exports remain high, averaging 21.1%, covering 58.3% of imports from the U.S., or about $90 billion of trade (Chad P. Bown, Peterson Institute for International Economics, 2023).
+
+This study verifies the effect of tariffs and trade war on the Chinese exports on global level.
+
+# Data Source
+
+The data was gathered for 281 countries altough there were many missing values. Thus, about half has been reduced just by removing missing values.
+
+Key variables were provided by Chinese Bureau for statistics including Imports, Exports, and Utilized fdi. Most of the entries were available and there was very low data loss. Using various regressions models, it has been confirmed that the data series of Imports and Exports is highly correlated because of reciprocal trade policies. Thus, only exports were used.
+
+The confounders were provided by World Bank, the list was long and is provided in the data quality assessment. There were many missing values, thus, we have dropped the ones that were mostly missing values.
+
+# Model
+
+The dependent variable in our model is "Exports". The independent is Tarrifs and Trade war (dummy of time = treatment of the US market post start of trade war = since 2018). It is an unbalanced dataset as most of the data are prior to 2018. The rest are confounders. We have utilized both fixed effect panel data and diff-in-diff model. It has been conducted for both levels (absolute) value of Total Value of Exports in dollars but also log value as it is related to money. 
+
+
+
+
+```{r echo=FALSE, include=FALSE, message=FALSE, warning=FALSE, comment = NA}
+
+# Load Libraries
+## Clear memory
+rm(list=ls())
+
+## Packages to use
+library(tidyverse)
+library(dplyr)
+library(modelsummary)
+library(knitr)
+library(ggplot2)
+library(skimr)
+library(psych)
+library(dplyr)
+library(plm)
+library(lfe)
+library(lubridate)
+library(lspline)
+library(fixest)
+require(scales)
+library(lmtest)
+library(olsrr)
+library("corrplot")
+library(kableExtra)
+library(stargazer)
+library(readr)
+library(lme4)
+library(emmeans)
+library(effects)
+library(knitr)
+
+
+# Call the data from github
+
+data_url <- "https://raw.githubusercontent.com/caliline2/DA4_JH_2023/main/China_data_2022_JH.csv"
+data1 <- read.csv(data_url)
+
+
+ls(data1)
+
+# Set options for number formatting
+options(digits = 2)
+options(scipen = 9999)
+
+# Rename the column "Total Value of Exports" to "Exports"
+# <- data1 %>% rename(Exports = `Total Value of Exports,`)
+#data1 <- data1 %>% rename(Imports = `Total Value of Imports,`)
+# Rename the column "Tariff rate, applied, weighted mean, all products (%)" to "Tariffs"
+#colnames(data1)[colnames(data4) == `Tariff rate, applied, weighted mean, all products (%)`] <- "Tariffs"
+
+
+
+# Pivot the data from wide to long format
+data2 <- data1 %>%
+  pivot_longer(cols = starts_with("X"), 
+               names_to = "Year", 
+               values_to = "Value") %>%
+  mutate(Year = as.integer(gsub("X", "", Year))) # Convert Year to integer
+  
+  data2
+  
+# Use spread() to create separate columns for each indicator
+data3 <- data2 %>%
+  spread(key = Indicators, value = Value)
+
+# Double checking the missing values total
+num_missing <- colSums(is.na(data3))
+```
+
+```{r echo=FALSE, include=TRUE, message=FALSE, warning=FALSE, comment = NA}
+# Create a table with kable
+#result_table <- data.frame(Statistic = "Number of missing values", Value = num_missing)
+#result_table %>%
+#  kable(caption = "Results", align = c("l", "c"), col.names = NULL) %>%
+#  kable_styling(bootstrap_options = "striped", full_width = FALSE)
+
+# Double checking the missing values per country
+#missing_count <- data3 %>%
+#  group_by(Country) %>%
+#  summarise_all(~sum(is.na(.)))
+```
+
+```{r echo=FALSE, include=FALSE, message=FALSE, warning=FALSE, comment = NA}
+# Numeric variables only
+data5 = subset(data3, select = c(4,5,6,7,8,9,10,11,12,13,14,15,16,17))
+ls(data5)
+```
+
+```{r echo=FALSE, include=FALSE, message=FALSE, warning=FALSE, comment = NA}
+#Correlation Matrix
+corrplot(cor(data5), method = "number",addCoef.col = 1,number.cex = 0.75,  title = "Correlation Matrix")
+
+
+```
+
+```{r echo=FALSE, include=TRUE, message=FALSE, warning=FALSE, comment = NA}
+#summary(data3)
+
+#skim(data3)
+
+
+
+```
+
+
+# Data Cleaning
+
+```{r echo=FALSE, include=FALSE, message=FALSE, warning=FALSE, comment = NA}
+# Filter data for the two periods of interest
+period1 <- 1997:2017
+period2 <- 2018:2021
+
+# Filter the data for each period
+data_period1 <- filter(data3, Year %in% period1)
+data_period2 <- filter(data3, Year %in% period2)
+
+# Create a dummy variable to indicate treatment group for data_period1 (countries that experienced a change in tariffs)
+data_period1$treatment <- 0
+
+# Create a dummy variable to indicate treatment group for data_period2 (countries that experienced a change in tariffs)
+data_period2$treatment <- ifelse(data_period2$Country == "United States", 1, 0)
+
+```
+
+
+
+## Convert to long form panel data frame
+
+```{r echo=FALSE, include=FALSE, message=FALSE, warning=FALSE, comment = NA}
+panel_data <- pdata.frame(rbind(data_period1, data_period2), index = c("Country", "Year")) 
+
+
+```
+
+### Example of data
+```{r echo=FALSE, include=TRUE, message=FALSE, warning=FALSE, comment = NA}
+# Select specific columns
+selected_columns <- panel_data %>%
+  select(Country, Year, Imports, Exports, Tariffs, fdi, business, ageing, electricity, oil)
+
+# Display selected columns as a table with kable
+kableExtra::kable(head(selected_columns))
+
+selected_columns2 <- panel_data %>%
+  select(Country, Year, Imports, Exports, Tariffs, fdi, business, ageing, electricity, oil, gdp, savings, internet, inflation, gender, interest, unemployment,servicesector,ruralpop,literacy,education,slums,publicdebt, militaryexp, immigration)
+```
+
+## Data quality
+
+Including missing values if n>7000. I have reviewed it also per country and dropped the variables accordingly.
+```{r echo=FALSE, include=TRUE, message=FALSE, warning=FALSE, comment = NA}
+kableExtra::kable(describe(selected_columns2))
+```
+
+\newpage
+# Interpreting the results - Level Value
+
+Although the coefficients are consistently negative, the tariffs alone may not have a significant impact on decreasing Chinese exports based on p-value (sometimes significant sometimes insignificant).Other factors such as fdi (foreign direct investment) seem to have a significant positive impact on Chinese exports. The treatment used, US post starting the trade war, is insufifficient to capture the downturn caused by the trade war. The model would benefit of using countries as confounders but then there would be just too many variables and there would be a threat of overfitting the model. 
+
+I will walk you quickly through the results.
+
+
+
+## 1. Fixed Effects Model - Tariffs and US-tradewar treatment Only:
+The fixed effects model with only tariffs as the independent explanatory variable shows that tariffs do not have a statistically significant effect on exports because of high p-value (0.5285>0.05). The treatment variable (US during trade war) is highly significant but rather than trade wars it captures the sheer volume and strengtth of Chinese-US trade between two large market and the coefficient is positive. The R-squared value of 0.236 suggests that the model explains only about 23.6% of the variance in Chinese exports and the performance of the model is relatively low.
+
+## 2. Fixed Effects Model - Tariffs, treatment and FDI Only:
+In the fixed effects model with tariffs, FDI and treatment as explanatory variables, tariffs do not show a statistically significant effect on exports, consistent with the preevious model. The FDI is statistically significant according to  a very low p-value indicating a strong positive effect on exports as well as the treatment. The R-squared is higher explaining about 46.4% of the variance of exports.
+
+## 3. Fixed Effects Model - Tariffs, treatment, FDI, and confounders :
+In the fixed effects model enriched with the World Bank confounders, the results show that tariffs and treatment have significant effects on Chinese exports. Tariffs have a negative impact on exports with a coefficient of -110298.098 meaning 1 unit (1%) change in tarrifs leads to -110298098 dollars-worth less exports. The US treatment has a significant positive impact. In addition, several years (2005-2019) also show significant positive effects on exports. Other confounding variables such as FDI, aging population, firms, Internet and gender also have significant effects on exports.
+FDI and low cost of starting a busines have positive significant effects on exports, while growing age dependency ratio, access to Internet and female participation in labor force have negative significant effects on exports.
+
+The model is relatively a good fit as it captures 68.9% of the variance of exports. To summarise, these results suggest that tariffs, treatment and other confounding factors are important factors affecting exports in this model.
+
+# Diff-in-Diff
+In Diff-in-Diff, the results are similar. The key difference is that the treatment variable is included as an interaction term with the Year variable. This way, we may see that the tarrifs' effect remains significant across all three models and the R-square is slightly lower as not each year is accounted for, only the treated ones.
+
+## Log Export models
+
+## 1. Fixed Effects Model - Tariffs and US-tradewar treatment Only:
+The first model shows that tariffs have a statistically significant negative effect on exports, with an estimated negative coefficient of -0.00244 for each 1% increase in current tarrif rate (1.01*XX% tarrifs). The treatment variable is insignificant due to high p-value. The effect of years is consistent accross countries and significan.
+
+## 2. Fixed Effects Model - Tariffs, treatment and FDI Only:
+Once we introduce FDI and treatment as explanatory variables, tariffs do not show a statistically significant effect on exports. However, FDI is statistically significant with a slightly negative coefficient.This model predominantly captures the growth over time in a form of years. The R-squared value is higher, explaining as much as 46.4% of the variance of exports but still a limited fit.
+
+## 3. Fixed Effects Model - Tariffs, treatment, FDI, and confounders:
+This model displays the highest R-square explaining as much as 72.6% of the variation. The results show that tariffs and treatment have significant effects on Chinese exports. Tariffs have a negative impact on exports, with a coefficient of -0.014 meaning that a 1% change in tariffs leads to a decrease in exports worth $14. The US treatment has a significant positive impact. Other confounding variables such as FDI, aging population, firms, Internet and gender also have significant effects on exports.
+FDI and low cost of starting a busines have positive significant effects on exports, while growing age dependency ratio, access to Internet and female participation in labor force have negative significant effects on exports.
+
+# Diff-in-Diff
+In Diff-in-Diff, the results are similar. Tarrifs have a consistent significant negative effect on the exports.  The key difference is that the treatment variable is included as an interaction term with the Year variable. This way, we may see that the tarrifs' effect remains significant across all three models and the R-square is slightly lower as not each year is accounted for, only the treated ones.
+
+# Summary
+
+The best fitting models do suggest that tariffs do have some significant negative impact on export volumes in dollars around the world even when controlling for the US post-trade war. Nonetheless, the picture is much more complex. Imports and FDI are highly correlated with exports as it is a political decision (parallel trend) rather than a natural causal relationship like physics. Nonetheless, country marketing, trade, and subsequent exports could be arguably boosted by FDI. China prefers to export to countries with low cost of starting a business, younger population and little female equality (emerging markets?), and tarriffs are a factor but Chinese products do manage to remain competitive even after tariffs (UNCATD, 2019).
+
+The best performing model is able to capture 72.6% of variation It includes most of the variables but not all as 50% of filtered out because of missing values. The model is based on log-exports which is common in economics among datasetss that deal with money.
+
+# Apendix
+
+
+\newpage
+
+# Levels Exports
+
+# Fixed Effects Model
+
+
+
+## Tarrifs only
+
+
+```{r echo=FALSE, include=FALSE, message=FALSE, warning=FALSE, comment = NA}
+
+
+model_fe <- plm(Exports ~ Tariffs + treatment + Year, data = panel_data, effect = "individual", model = "within", na.action = na.exclude, fixed = TRUE)
+
+
+```
+
+```{r echo=FALSE, include=TRUE, message=FALSE, warning=FALSE, comment = NA}
+summary(model_fe)
+
+```
+
+\newpage
+## Key variables provided by Chinese Bureau for statistics
+
+
+```{r echo=FALSE, include=FALSE, message=FALSE, warning=FALSE, comment = NA}
+model_fe2 <- plm(Exports ~ Tariffs + fdi + treatment + Year, data = panel_data, effect = "individual", model = "within", na.action = na.exclude, fixed = TRUE)
+
+```
+
+```{r echo=FALSE, include=TRUE, message=FALSE, warning=FALSE, comment = NA}
+summary(model_fe2)
+
+
+```
+
+\newpage
+### Enriched with World Bank confounders
+```{r echo=FALSE, include=FALSE, message=FALSE, warning=FALSE, comment = NA}
+model_did <- plm(Exports ~ Tariffs + treatment + Year + fdi + electricity + ageing + business + gdp + savings + internet + inflation + gender + interest + unemployment + oil, data = panel_data, effect = "individual", model = "within", na.action = na.exclude, fixed = TRUE)
+
+```
+
+```{r echo=FALSE, include=TRUE, message=FALSE, warning=FALSE, comment = NA}
+summary(model_did)
+
+
+```
+
+\newpage
+# Diff-in-Diff Model
+
+## Tarrifs only
+
+
+```{r echo=FALSE, include=FALSE, message=FALSE, warning=FALSE, comment = NA}
+model_did <- plm(Exports ~ Tariffs + treatment:Year, data = panel_data, effect = "individual", model = "within", na.action = na.exclude)
+
+```
+
+```{r echo=FALSE, include=TRUE, message=FALSE, warning=FALSE, comment = NA}
+summary(model_did)
+
+```
+
+\newpage
+## Key variables provided by Chinese Bureau for statistics 
+
+
+```{r echo=FALSE, include=FALSE, message=FALSE, warning=FALSE, comment = NA}
+model_did2 <- plm(Exports ~ Tariffs + fdi + treatment:Year, data = panel_data, effect = "individual", model = "within", na.action = na.exclude)
+
+```
+
+
+```{r echo=FALSE, include=TRUE, message=FALSE, warning=FALSE, comment = NA}
+summary(model_did2)
+
+```
+
+\newpage
+## Enriched with World Bank confounders
+
+```{r echo=FALSE, include=FALSE, message=FALSE, warning=FALSE, comment = NA}
+
+model_did <- plm(Exports ~ Tariffs + fdi + electricity + ageing + business + gdp + savings + internet + inflation + gender + interest + unemployment + oil+ treatment:Year, data = panel_data, effect = "individual", model = "within", na.action = na.exclude)
+summary(model_did)
+
+
+
+```
+
+
+```{r echo=FALSE, include=TRUE, message=FALSE, warning=FALSE, comment = NA}
+
+summary(model_did)
+
+
+
+```
+\newpage
+# Log Exports
+
+
+
+## Fixed Effects Model
+
+### Tarrifs only
+
+
+```{r echo=FALSE, include=FALSE, message=FALSE, warning=FALSE, comment = NA}
+
+model_fe <- plm(log(Exports) ~ Tariffs + treatment + Year, data = panel_data, effect = "individual", model = "within", na.action = na.exclude, fixed = TRUE)
+
+```
+
+```{r echo=FALSE, include=TRUE, message=FALSE, warning=FALSE, comment = NA}
+summary(model_fe)
+```
+\newpage
+
+### Key variables provided by Chinese Bureau for statistics
+
+
+```{r echo=FALSE, include=FALSE, message=FALSE, warning=FALSE, comment = NA}
+model_fe2 <- plm(log(Exports) ~ Tariffs + fdi + treatment + Year, data = panel_data, effect = "individual", model = "within", na.action = na.exclude, fixed = TRUE)
+
+```
+
+```{r echo=FALSE, include=TRUE, message=FALSE, warning=FALSE, comment = NA}
+summary(model_fe2)
+```
+\newpage
+
+### Enriched with World Bank confounders
+
+
+```{r echo=FALSE, include=FALSE, message=FALSE, warning=FALSE, comment = NA}
+model_did <- plm(log(Exports) ~ Tariffs + fdi+ treatment + Year + electricity + ageing + business + gdp + savings + internet + inflation + gender + interest + unemployment + oil, data = panel_data, effect = "individual", model = "within", na.action = na.exclude, fixed = TRUE)
+
+```
+
+```{r echo=FALSE, include=TRUE, message=FALSE, warning=FALSE, comment = NA}
+summary(model_did)
+```
+
+\newpage
+## Diff-in-Diff Model
+
+### Tarrifs only
+
+
+```{r echo=FALSE, include=FALSE, message=FALSE, warning=FALSE, comment = NA}
+model_did <- plm(log(Exports) ~ Tariffs + treatment:Year, data = panel_data, effect = "individual", model = "within", na.action = na.exclude)
+
+```
+
+```{r echo=FALSE, include=TRUE, message=FALSE, warning=FALSE, comment = NA}
+summary(model_did)
+```
+\newpage
+### Key variables provided by Chinese Bureau for statistics 
+
+
+```{r echo=FALSE, include=FALSE, message=FALSE, warning=FALSE, comment = NA}
+model_did2 <- plm(log(Exports) ~ Tariffs + fdi + treatment:Year, data = panel_data, effect = "individual", model = "within", na.action = na.exclude)
+```
+
+```{r echo=FALSE, include=TRUE, message=FALSE, warning=FALSE, comment = NA}
+summary(model_did2)
+
+```
+
+\newpage
+### Enriched with World Bank confounders
+
+
+```{r echo=FALSE, include=FALSE, message=FALSE, warning=FALSE, comment = NA}
+model_did <- plm(log(Exports) ~ Tariffs + fdi + electricity + ageing + business + gdp + savings + internet + inflation + gender + interest + unemployment + oil+ treatment:Year, data = panel_data, effect = "individual", model = "within", na.action = na.exclude)
+```
+
+```{r echo=FALSE, include=TRUE, message=FALSE, warning=FALSE, comment = NA}
+summary(model_did)
+```
+
+
+
